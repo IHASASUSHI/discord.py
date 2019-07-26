@@ -420,7 +420,10 @@ class VoiceClient:
 
         self.checked_add('sequence', 1, 65535)
         if encode:
-            encoded_data = opus.Encoder.encode(data, opus.Encoder.SAMPLES_PER_FRAME)
+            if self.encoder is None:
+                self.encoder = opus.Encoder()
+
+            encoded_data = self.encoder.encode(data, opus.Encoder.SAMPLES_PER_FRAME)
         else:
             encoded_data = data
         packet = self._encrypt_voice_packet(encoded_data)
