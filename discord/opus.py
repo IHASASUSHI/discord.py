@@ -404,7 +404,6 @@ class Decoder(_OpusStruct):
 
         pcm = (ctypes.c_int16 * (frame_size * self.CHANNELS))()
         pcm_ptr = ctypes.cast(pcm, ctypes.POINTER(ctypes.c_int16))
-
         result = _lib.opus_decode(self._state, data, len(data) if data else 0, pcm_ptr, frame_size, fec)
         return array.array('h', pcm).tobytes()
 
@@ -708,9 +707,11 @@ class BufferedPacketDecoder(BasePacketDecoder):
         return next(iter(self))
 
     def feed_rtp(self, packet):
+        self._push(packet)
+        '''    
         if self._last_ts < packet.timestamp:
             self._push(packet)
-
+        '''
     def feed_rtcp(self, packet):
         with self._lock:
             if not self._buffer:
@@ -754,6 +755,7 @@ class BufferedPacketDecoder(BasePacketDecoder):
 
         # Optional diagnostics, will probably remove later
             bufsize = len(self._buffer) # indent intentional
+        
         if bufsize >= self.buffer_size * self._overflow_mult:
             print(f"[router:push] Warning: rtp heap size has grown to {bufsize}")
             self._overflow_mult += self._overflow_incr
@@ -854,7 +856,6 @@ class BufferedDecoder(threading.Thread):
 
     def _get_decoder(self, ssrc):
         dec = self.decoders.get(ssrc)
-
         if not dec and self.reader.client._get_ssrc_mapping(ssrc=ssrc)[1]: # and get_user(ssrc)?
             dec = self.decoders[ssrc] = self.decodercls(ssrc)
             dec.start_time = time.perf_counter() # :thinking:
@@ -916,7 +917,6 @@ class BufferedDecoder(threading.Thread):
         try:
             normal_feed_rtp = self.feed_rtp
             self.feed_rtp = self._feed_rtp_initial
-
             buff = self.initial_buffer
 
             # Very small sleep to check if there's buffered packets
@@ -986,7 +986,6 @@ class BufferedDecoder(threading.Thread):
 
             next_time, decoder = self.queue.popleft()
             remaining = next_time - time.perf_counter()
-
             if remaining >= 0:
                 insort(self.queue, (next_time, decoder))
                 time.sleep(max(0.002, remaining/2)) # sleep accuracy tm
