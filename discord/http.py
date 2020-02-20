@@ -3,7 +3,7 @@
 """
 The MIT License (MIT)
 
-Copyright (c) 2015-2019 Rapptz
+Copyright (c) 2015-2020 Rapptz
 
 Permission is hereby granted, free of charge, to any person obtaining a
 copy of this software and associated documentation files (the "Software"),
@@ -179,7 +179,7 @@ class HTTPClient:
 
                     # we are being rate limited
                     if r.status == 429:
-                        if not isinstance(data, dict):
+                        if not r.headers.get('Via'):
                             # Banned by Cloudflare more than likely.
                             raise HTTPException(r, data)
 
@@ -372,12 +372,6 @@ class HTTPClient:
         r = Route('PATCH', '/channels/{channel_id}/messages/{message_id}', channel_id=channel_id, message_id=message_id)
         return self.request(r, json=fields)
 
-    def suppress_message_embeds(self, channel_id, message_id, *, suppress):
-        payload = { 'suppress': suppress }
-        r = Route('POST', '/channels/{channel_id}/messages/{message_id}/suppress-embeds',
-                  channel_id=channel_id, message_id=message_id)
-        return self.request(r, json=payload)
-
     def add_reaction(self, channel_id, message_id, emoji):
         r = Route('PUT', '/channels/{channel_id}/messages/{message_id}/reactions/{emoji}/@me',
                   channel_id=channel_id, message_id=message_id, emoji=emoji)
@@ -408,6 +402,11 @@ class HTTPClient:
 
         return self.request(r)
 
+    def clear_single_reaction(self, channel_id, message_id, emoji):
+        r = Route('DELETE', '/channels/{channel_id}/messages/{message_id}/reactions/{emoji}',
+                   channel_id=channel_id, message_id=message_id, emoji=emoji)
+        return self.request(r)
+
     def get_message(self, channel_id, message_id):
         r = Route('GET', '/channels/{channel_id}/messages/{message_id}', channel_id=channel_id, message_id=message_id)
         return self.request(r)
@@ -429,6 +428,10 @@ class HTTPClient:
             params['around'] = around
 
         return self.request(Route('GET', '/channels/{channel_id}/messages', channel_id=channel_id), params=params)
+
+    def publish_message(self, channel_id, message_id):
+        return self.request(Route('POST', '/channels/{channel_id}/messages/{message_id}/crosspost',
+                                  channel_id=channel_id, message_id=message_id))
 
     def pin_message(self, channel_id, message_id):
         return self.request(Route('PUT', '/channels/{channel_id}/pins/{message_id}',
