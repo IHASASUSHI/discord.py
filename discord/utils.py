@@ -3,7 +3,7 @@
 """
 The MIT License (MIT)
 
-Copyright (c) 2015-2020 Rapptz
+Copyright (c) 2015-2019 Rapptz
 
 Permission is hereby granted, free of charge, to any person obtaining a
 copy of this software and associated documentation files (the "Software"),
@@ -28,22 +28,23 @@ import array
 import asyncio
 import collections.abc
 import unicodedata
-from base64 import b64encode
-from bisect import bisect_left
 import datetime
-from email.utils import parsedate_to_datetime
 import functools
-from inspect import isawaitable as _isawaitable
-from operator import attrgetter
 import json
 import re
 import warnings
+
+from base64 import b64encode
+from bisect import bisect_left
+from email.utils import parsedate_to_datetime
+from inspect import isawaitable as _isawaitable
+from collections import defaultdict
+from operator import attrgetter
 
 from .errors import InvalidArgument
 from .object import Object
 
 DISCORD_EPOCH = 1420070400000
-MAX_ASYNCIO_SECONDS = 3456000
 
 class cached_property:
     def __init__(self, function):
@@ -106,6 +107,93 @@ class SequenceProxy(collections.abc.Sequence):
 
     def count(self, value):
         return self.__proxied.count(value)
+
+class Bidict(dict):
+    """A bi-directional dict"""
+    _None = object()
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        super().update({v:k for k, v in self.items()})
+
+    def __setitem__(self, key, value):
+        # Delete related mappings
+        # if we have 1 <-> 2 and we set 2 <-> 3, 2 is now unrelated to 1
+
+        if key in self:
+            del self[key]
+        if value in self:
+            del self[value]
+
+        super().__setitem__(key, value)
+        super().__setitem__(value, key)
+
+    def __delitem__(self, key):
+        value = super().__getitem__(key)
+        super().__delitem__(value)
+
+        if key == value:
+            return
+
+        super().__delitem__(key)
+
+    def to_dict(self):
+        return super().copy()
+
+    def pop(self, k, d=_None):
+        try:
+            v = super().pop(k)
+            super().pop(v, d)
+            return v
+        except KeyError:
+            if d is not self._None:
+                return d
+            raise
+
+    def popitem(self):
+        item = super().popitem()
+        super().__delitem__(item[1])
+        return item
+
+    def setdefault(self, k, d=None):
+        try:
+            return self[k]
+        except KeyError:
+            if d in self:
+                return d
+
+        self[k] = d
+        return d
+
+    def update(self, *args, **F):
+        try:
+            E = args[0]
+            if callable(getattr(E, 'keys', None)):
+                for k in E:
+                    self[k] = E[k]
+            else:
+                for k,v in E:
+                    self[k] = v
+        except IndexError:
+            pass
+        finally:
+            for k in F:
+                self[k] = F[k]
+
+    def copy(self):
+        return self.__class__(super().copy())
+
+    # incompatible
+    # https://docs.python.org/3/library/exceptions.html#NotImplementedError, Note 1
+    fromkeys = None
+
+class Defaultdict(defaultdict):
+    def __missing__(self, key):
+        if self.default_factory is None:
+            raise KeyError((key,))
+
+        self[key] = value = self.default_factory(key)
+        return value
 
 def parse_time(timestamp):
     if timestamp:
@@ -181,7 +269,7 @@ def find(predicate, seq):
     """A helper to return the first element found in the sequence
     that meets the predicate. For example: ::
 
-        member = discord.utils.find(lambda m: m.name == 'Mighty', channel.guild.members)
+        member = find(lambda m: m.name == 'Mighty', channel.guild.members)
 
     would find the first :class:`~discord.Member` whose name is 'Mighty' and return it.
     If an entry is not found, then ``None`` is returned.
@@ -338,31 +426,6 @@ async def sane_wait_for(futures, *, timeout):
         raise asyncio.TimeoutError()
 
     return done
-
-async def sleep_until(when, result=None):
-    """|coro|
-
-    Sleep until a specified time.
-
-    If the time supplied is in the past this function will yield instantly.
-
-    .. versionadded:: 1.3
-
-    Parameters
-    -----------
-    when: :class:`datetime.datetime`
-        The timestamp in which to sleep until.
-    result: Any
-        If provided is returned to the caller when the coroutine completes.
-    """
-    if when.tzinfo is None:
-        when = when.replace(tzinfo=datetime.timezone.utc)
-    now = datetime.datetime.now(datetime.timezone.utc)
-    delta = (when - now).total_seconds()
-    while delta > MAX_ASYNCIO_SECONDS:
-        await asyncio.sleep(MAX_ASYNCIO_SECONDS)
-        delta -= MAX_ASYNCIO_SECONDS
-    return await asyncio.sleep(max(delta, 0), result)
 
 def valid_icon_size(size):
     """Icons must be power of 2 within [16, 4096]."""

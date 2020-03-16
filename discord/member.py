@@ -3,7 +3,7 @@
 """
 The MIT License (MIT)
 
-Copyright (c) 2015-2020 Rapptz
+Copyright (c) 2015-2019 Rapptz
 
 Permission is hereby granted, free of charge, to any person obtaining a
 copy of this software and associated documentation files (the "Software"),
@@ -53,7 +53,7 @@ class VoiceState:
     self_stream: :class:`bool`
         Indicates if the user is currently streaming via 'Go Live' feature.
 
-        .. versionadded:: 1.3
+        .. versionadded:: 1.3.0 
 
     self_video: :class:`bool`
         Indicates if the user is currently broadcasting video.
@@ -150,7 +150,7 @@ class Member(discord.abc.Messageable, _BaseUser):
     joined_at: Optional[:class:`datetime.datetime`]
         A datetime object that specifies the date and time in UTC that the member joined the guild for
         the first time. In certain cases, this can be ``None``.
-    activities: Tuple[Union[:class:`BaseActivity`, :class:`Spotify`]]
+    activities: Tuple[Union[:class:`Game`, :class:`Streaming`, :class:`Spotify`, :class:`Activity`]]
         The activities that the user is currently doing.
     guild: :class:`Guild`
         The guild that the member belongs to.
@@ -161,8 +161,7 @@ class Member(discord.abc.Messageable, _BaseUser):
         Nitro boost on the guild, if available. This could be ``None``.
     """
 
-    __slots__ = ('_roles', '_cs_roles', 'joined_at', 'premium_since', '_client_status',
-                 'activities', 'guild', 'nick', '_user', '_state')
+    __slots__ = ('_roles', 'joined_at', 'premium_since', '_client_status', 'activities', 'guild', 'nick', '_user', '_state')
 
     def __init__(self, *, data, guild, state):
         self._state = state
@@ -234,11 +233,6 @@ class Member(discord.abc.Messageable, _BaseUser):
         self.activities = member.activities
         self._state = member._state
 
-        try:
-            del self._cs_roles
-        except AttributeError:
-            pass
-
         # Reference will not be copied unless necessary by PRESENCE_UPDATE
         # See below
         self._user = member._user
@@ -250,10 +244,6 @@ class Member(discord.abc.Messageable, _BaseUser):
 
     def _update_roles(self, data):
         self._roles = utils.SnowflakeList(map(int, data['roles']))
-        try:
-            del self._cs_roles
-        except AttributeError:
-            pass
 
     def _update(self, data):
         # the nickname change is optional,
@@ -344,7 +334,7 @@ class Member(discord.abc.Messageable, _BaseUser):
         """
         return self.colour
 
-    @utils.cached_slot_property('_cs_roles')
+    @property
     def roles(self):
         """List[:class:`Role`]: A :class:`list` of :class:`Role` that the member belongs to. Note
         that the first element of this list is always the default '@everyone'
@@ -381,7 +371,7 @@ class Member(discord.abc.Messageable, _BaseUser):
 
     @property
     def activity(self):
-        """Union[:class:`BaseActivity`, :class:`Spotify`]: Returns the primary
+        """Union[:class:`Game`, :class:`Streaming`, :class:`Spotify`, :class:`Activity`]: Returns the primary
         activity the user is currently doing. Could be None if no activity is being done.
 
         .. note::
@@ -399,14 +389,12 @@ class Member(discord.abc.Messageable, _BaseUser):
         message: :class:`Message`
             The message to check if you're mentioned in.
         """
-        if message.guild is None or message.guild.id != self.guild.id:
-            return False
-
         if self._user.mentioned_in(message):
             return True
 
         for role in message.role_mentions:
-            if self._roles.has(role.id):
+            has_role = utils.get(self.roles, id=role.id) is not None
+            if has_role:
                 return True
 
         return False
@@ -511,7 +499,7 @@ class Member(discord.abc.Messageable, _BaseUser):
 
         All parameters are optional.
 
-        .. versionchanged:: 1.1
+        .. versionchanged:: 1.1.0
             Can now pass ``None`` to ``voice_channel`` to kick a member from voice.
 
         Parameters
@@ -589,7 +577,7 @@ class Member(discord.abc.Messageable, _BaseUser):
 
         This raises the same exceptions as :meth:`edit`.
 
-        .. versionchanged:: 1.1
+        .. versionchanged:: 1.1.0
             Can now pass ``None`` to kick a member from voice.
 
         Parameters

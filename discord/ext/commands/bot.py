@@ -3,7 +3,7 @@
 """
 The MIT License (MIT)
 
-Copyright (c) 2015-2020 Rapptz
+Copyright (c) 2015-2019 Rapptz
 
 Permission is hereby granted, free of charge, to any person obtaining a
 copy of this software and associated documentation files (the "Software"),
@@ -293,9 +293,8 @@ class BotBase(GroupMixin):
         If an :attr:`owner_id` is not set, it is fetched automatically
         through the use of :meth:`~.Bot.application_info`.
 
-        .. versionchanged:: 1.3
-            The function also checks if the application is team-owned if
-            :attr:`owner_ids` is not set.
+        The function also checks if the application is team-owned if
+        :attr:`owner_ids` is not set.
 
         Parameters
         -----------
@@ -792,7 +791,7 @@ class BotBase(GroupMixin):
             except TypeError:
                 # It's possible that a generator raised this exception.  Don't
                 # replace it with our own error if that's the case.
-                if isinstance(ret, collections.abc.Iterable):
+                if isinstance(ret, collections.Iterable):
                     raise
 
                 raise TypeError("command_prefix must be plain string, iterable of strings, or callable "
@@ -994,8 +993,6 @@ class Bot(BotBase, discord.Client):
         fetched automatically using :meth:`~.Bot.application_info`.
         For performance reasons it is recommended to use a :class:`set`
         for the collection. You cannot set both `owner_id` and `owner_ids`.
-
-        .. versionadded:: 1.3
     """
     pass
 

@@ -3,7 +3,7 @@
 """
 The MIT License (MIT)
 
-Copyright (c) 2015-2020 Rapptz
+Copyright (c) 2015-2019 Rapptz
 
 Permission is hereby granted, free of charge, to any person obtaining a
 copy of this software and associated documentation files (the "Software"),
@@ -24,36 +24,12 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 """
 
-from .flags import BaseFlags, flag_value, fill_with_flags
-
-__all__ = (
-    'Permissions',
-    'PermissionOverwrite',
-)
-
-# A permission alias works like a regular flag but is marked
-# So the PermissionOverwrite knows to work with it
-class permission_alias(flag_value):
-    pass
-
-def make_permission_alias(alias):
-    def decorator(func):
-        ret = permission_alias(func)
-        ret.alias = alias
-        return ret
-    return decorator
-
-@fill_with_flags()
-class Permissions(BaseFlags):
+class Permissions:
     """Wraps up the Discord permission value.
 
     The properties provided are two way. You can set and retrieve individual
     bits using the properties as if they were regular bools. This allows
     you to edit permissions.
-
-    .. versionchanged:: 1.3
-        You can now use keyword arguments to initialize :class:`Permissions`
-        similar to :meth:`update`.
 
     .. container:: operations
 
@@ -82,7 +58,6 @@ class Permissions(BaseFlags):
 
                Returns an iterator of ``(perm, value)`` pairs. This allows it
                to be, for example, constructed as a dict or a list of pairs.
-               Note that aliases are not shown.
 
     Attributes
     -----------
@@ -92,17 +67,34 @@ class Permissions(BaseFlags):
         permissions via the properties rather than using this raw value.
     """
 
-    __slots__ = ()
-
-    def __init__(self, permissions=0, **kwargs):
+    __slots__ = ('value',)
+    def __init__(self, permissions=0):
         if not isinstance(permissions, int):
             raise TypeError('Expected int parameter, received %s instead.' % permissions.__class__.__name__)
 
         self.value = permissions
-        for key, value in kwargs.items():
-            if key not in self.VALID_FLAGS:
-                raise TypeError('%r is not a valid permission name.' % key)
-            setattr(self, key, value)
+
+    def __eq__(self, other):
+        return isinstance(other, Permissions) and self.value == other.value
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+    def __hash__(self):
+        return hash(self.value)
+
+    def __repr__(self):
+        return '<Permissions value=%s>' % self.value
+
+    def _perm_iterator(self):
+        for attr in dir(self):
+            # check if it's a property, because if so it's a permission
+            is_property = isinstance(getattr(self.__class__, attr), property)
+            if is_property:
+                yield (attr, getattr(self, attr))
+
+    def __iter__(self):
+        return self._perm_iterator()
 
     def is_subset(self, other):
         """Returns ``True`` if self has the same or fewer permissions as other."""
@@ -130,14 +122,6 @@ class Permissions(BaseFlags):
     __ge__ = is_superset
     __lt__ = is_strict_subset
     __gt__ = is_strict_superset
-
-    def __iter__(self):
-        for name, value in self.__class__.__dict__.items():
-            if isinstance(value, permission_alias):
-                continue
-
-            if isinstance(value, flag_value):
-                yield (name, self._has_flag(value.flag))
 
     @classmethod
     def none(cls):
@@ -198,8 +182,24 @@ class Permissions(BaseFlags):
             A list of key/value pairs to bulk update permissions with.
         """
         for key, value in kwargs.items():
-            if key in self.VALID_FLAGS:
+            try:
+                is_property = isinstance(getattr(self.__class__, key), property)
+            except AttributeError:
+                continue
+
+            if is_property:
                 setattr(self, key, value)
+
+    def _bit(self, index):
+        return bool((self.value >> index) & 1)
+
+    def _set(self, index, value):
+        if value is True:
+            self.value |= (1 << index)
+        elif value is False:
+            self.value &= ~(1 << index)
+        else:
+            raise TypeError('Value to set for Permissions must be a bool.')
 
     def handle_overwrite(self, allow, deny):
         # Basically this is what's happening here.
@@ -216,85 +216,129 @@ class Permissions(BaseFlags):
         # The OP2 is base | allowed.
         self.value = (self.value & ~deny) | allow
 
-    @flag_value
+    @property
     def create_instant_invite(self):
         """:class:`bool`: Returns ``True`` if the user can create instant invites."""
-        return 1 << 0
+        return self._bit(0)
 
-    @flag_value
+    @create_instant_invite.setter
+    def create_instant_invite(self, value):
+        self._set(0, value)
+
+    @property
     def kick_members(self):
         """:class:`bool`: Returns ``True`` if the user can kick users from the guild."""
-        return 1 << 1
+        return self._bit(1)
 
-    @flag_value
+    @kick_members.setter
+    def kick_members(self, value):
+        self._set(1, value)
+
+    @property
     def ban_members(self):
         """:class:`bool`: Returns ``True`` if a user can ban users from the guild."""
-        return 1 << 2
+        return self._bit(2)
 
-    @flag_value
+    @ban_members.setter
+    def ban_members(self, value):
+        self._set(2, value)
+
+    @property
     def administrator(self):
         """:class:`bool`: Returns ``True`` if a user is an administrator. This role overrides all other permissions.
 
         This also bypasses all channel-specific overrides.
         """
-        return 1 << 3
+        return self._bit(3)
 
-    @flag_value
+    @administrator.setter
+    def administrator(self, value):
+        self._set(3, value)
+
+    @property
     def manage_channels(self):
         """:class:`bool`: Returns ``True`` if a user can edit, delete, or create channels in the guild.
 
         This also corresponds to the "Manage Channel" channel-specific override."""
-        return 1 << 4
+        return self._bit(4)
 
-    @flag_value
+    @manage_channels.setter
+    def manage_channels(self, value):
+        self._set(4, value)
+
+    @property
     def manage_guild(self):
         """:class:`bool`: Returns ``True`` if a user can edit guild properties."""
-        return 1 << 5
+        return self._bit(5)
 
-    @flag_value
+    @manage_guild.setter
+    def manage_guild(self, value):
+        self._set(5, value)
+
+    @property
     def add_reactions(self):
         """:class:`bool`: Returns ``True`` if a user can add reactions to messages."""
-        return 1 << 6
+        return self._bit(6)
 
-    @flag_value
+    @add_reactions.setter
+    def add_reactions(self, value):
+        self._set(6, value)
+
+    @property
     def view_audit_log(self):
         """:class:`bool`: Returns ``True`` if a user can view the guild's audit log."""
-        return 1 << 7
+        return self._bit(7)
 
-    @flag_value
+    @view_audit_log.setter
+    def view_audit_log(self, value):
+        self._set(7, value)
+
+    @property
     def priority_speaker(self):
         """:class:`bool`: Returns ``True`` if a user can be more easily heard while talking."""
-        return 1 << 8
+        return self._bit(8)
 
-    @flag_value
+    @priority_speaker.setter
+    def priority_speaker(self, value):
+        self._set(8, value)
+
+    @property
     def stream(self):
         """:class:`bool`: Returns ``True`` if a user can stream in a voice channel."""
-        return 1 << 9
+        return self._bit(9)
 
-    @flag_value
+    @stream.setter
+    def stream(self, value):
+        self._set(9, value)
+
+    @property
     def read_messages(self):
         """:class:`bool`: Returns ``True`` if a user can read messages from all or specific text channels."""
-        return 1 << 10
+        return self._bit(10)
 
-    @make_permission_alias('read_messages')
-    def view_channel(self):
-        """:class:`bool`: An alias for :attr:`read_messages`.
+    @read_messages.setter
+    def read_messages(self, value):
+        self._set(10, value)
 
-        .. versionadded:: 1.3
-        """
-        return 1 << 10
-
-    @flag_value
+    @property
     def send_messages(self):
         """:class:`bool`: Returns ``True`` if a user can send messages from all or specific text channels."""
-        return 1 << 11
+        return self._bit(11)
 
-    @flag_value
+    @send_messages.setter
+    def send_messages(self, value):
+        self._set(11, value)
+
+    @property
     def send_tts_messages(self):
         """:class:`bool`: Returns ``True`` if a user can send TTS messages from all or specific text channels."""
-        return 1 << 12
+        return self._bit(12)
 
-    @flag_value
+    @send_tts_messages.setter
+    def send_tts_messages(self, value):
+        self._set(12, value)
+
+    @property
     def manage_messages(self):
         """:class:`bool`: Returns ``True`` if a user can delete or pin messages in a text channel.
 
@@ -302,143 +346,189 @@ class Permissions(BaseFlags):
 
             Note that there are currently no ways to edit other people's messages.
         """
-        return 1 << 13
+        return self._bit(13)
 
-    @flag_value
+    @manage_messages.setter
+    def manage_messages(self, value):
+        self._set(13, value)
+
+    @property
     def embed_links(self):
         """:class:`bool`: Returns ``True`` if a user's messages will automatically be embedded by Discord."""
-        return 1 << 14
+        return self._bit(14)
 
-    @flag_value
+    @embed_links.setter
+    def embed_links(self, value):
+        self._set(14, value)
+
+    @property
     def attach_files(self):
         """:class:`bool`: Returns ``True`` if a user can send files in their messages."""
-        return 1 << 15
+        return self._bit(15)
 
-    @flag_value
+    @attach_files.setter
+    def attach_files(self, value):
+        self._set(15, value)
+
+    @property
     def read_message_history(self):
         """:class:`bool`: Returns ``True`` if a user can read a text channel's previous messages."""
-        return 1 << 16
+        return self._bit(16)
 
-    @flag_value
+    @read_message_history.setter
+    def read_message_history(self, value):
+        self._set(16, value)
+
+    @property
     def mention_everyone(self):
         """:class:`bool`: Returns ``True`` if a user's @everyone or @here will mention everyone in the text channel."""
-        return 1 << 17
+        return self._bit(17)
 
-    @flag_value
+    @mention_everyone.setter
+    def mention_everyone(self, value):
+        self._set(17, value)
+
+    @property
     def external_emojis(self):
         """:class:`bool`: Returns ``True`` if a user can use emojis from other guilds."""
-        return 1 << 18
+        return self._bit(18)
 
-    @make_permission_alias('external_emojis')
-    def use_external_emojis(self):
-        """:class:`bool`: An alias for :attr:`external_emojis`.
+    @external_emojis.setter
+    def external_emojis(self, value):
+        self._set(18, value)
 
-        .. versionadded:: 1.3
-        """
-        return 1 << 18
-
-    @flag_value
+    @property
     def view_guild_insights(self):
         """:class:`bool`: Returns ``True`` if a user can view the guild's insights.
-
-        .. versionadded:: 1.3
+        
+        .. versionadded:: 1.3.0
         """
-        return 1 << 19
+        return self._bit(19)
 
-    @flag_value
+    @view_guild_insights.setter
+    def view_guild_insights(self, value):
+        self._set(19, value)
+
+    @property
     def connect(self):
         """:class:`bool`: Returns ``True`` if a user can connect to a voice channel."""
-        return 1 << 20
+        return self._bit(20)
 
-    @flag_value
+    @connect.setter
+    def connect(self, value):
+        self._set(20, value)
+
+    @property
     def speak(self):
         """:class:`bool`: Returns ``True`` if a user can speak in a voice channel."""
-        return 1 << 21
+        return self._bit(21)
 
-    @flag_value
+    @speak.setter
+    def speak(self, value):
+        self._set(21, value)
+
+    @property
     def mute_members(self):
         """:class:`bool`: Returns ``True`` if a user can mute other users."""
-        return 1 << 22
+        return self._bit(22)
 
-    @flag_value
+    @mute_members.setter
+    def mute_members(self, value):
+        self._set(22, value)
+
+    @property
     def deafen_members(self):
         """:class:`bool`: Returns ``True`` if a user can deafen other users."""
-        return 1 << 23
+        return self._bit(23)
 
-    @flag_value
+    @deafen_members.setter
+    def deafen_members(self, value):
+        self._set(23, value)
+
+    @property
     def move_members(self):
         """:class:`bool`: Returns ``True`` if a user can move users between other voice channels."""
-        return 1 << 24
+        return self._bit(24)
 
-    @flag_value
+    @move_members.setter
+    def move_members(self, value):
+        self._set(24, value)
+
+    @property
     def use_voice_activation(self):
         """:class:`bool`: Returns ``True`` if a user can use voice activation in voice channels."""
-        return 1 << 25
+        return self._bit(25)
 
-    @flag_value
+    @use_voice_activation.setter
+    def use_voice_activation(self, value):
+        self._set(25, value)
+
+    @property
     def change_nickname(self):
         """:class:`bool`: Returns ``True`` if a user can change their nickname in the guild."""
-        return 1 << 26
+        return self._bit(26)
 
-    @flag_value
+    @change_nickname.setter
+    def change_nickname(self, value):
+        self._set(26, value)
+
+    @property
     def manage_nicknames(self):
         """:class:`bool`: Returns ``True`` if a user can change other user's nickname in the guild."""
-        return 1 << 27
+        return self._bit(27)
 
-    @flag_value
+    @manage_nicknames.setter
+    def manage_nicknames(self, value):
+        self._set(27, value)
+
+    @property
     def manage_roles(self):
         """:class:`bool`: Returns ``True`` if a user can create or edit roles less than their role's position.
 
         This also corresponds to the "Manage Permissions" channel-specific override.
         """
-        return 1 << 28
+        return self._bit(28)
 
-    @make_permission_alias('manage_roles')
-    def manage_permissions(self):
-        """:class:`bool`: An alias for :attr:`manage_roles`.
+    @manage_roles.setter
+    def manage_roles(self, value):
+        self._set(28, value)
 
-        .. versionadded:: 1.3
-        """
-        return 1 << 28
-
-    @flag_value
+    @property
     def manage_webhooks(self):
         """:class:`bool`: Returns ``True`` if a user can create, edit, or delete webhooks."""
-        return 1 << 29
+        return self._bit(29)
 
-    @flag_value
+    @manage_webhooks.setter
+    def manage_webhooks(self, value):
+        self._set(29, value)
+
+    @property
     def manage_emojis(self):
         """:class:`bool`: Returns ``True`` if a user can create, edit, or delete emojis."""
-        return 1 << 30
+        return self._bit(30)
+
+    @manage_emojis.setter
+    def manage_emojis(self, value):
+        self._set(30, value)
 
     # 1 unused
 
     # after these 32 bits, there's 21 more unused ones technically
 
 def augment_from_permissions(cls):
-    cls.VALID_NAMES = set(Permissions.VALID_FLAGS)
-    aliases = set()
+    cls.VALID_NAMES = {name for name in dir(Permissions) if isinstance(getattr(Permissions, name), property)}
 
-    # make descriptors for all the valid names and aliases
-    for name, value in Permissions.__dict__.items():
-        if isinstance(value, permission_alias):
-            key = value.alias
-            aliases.add(name)
-        elif isinstance(value, flag_value):
-            key = name
-        else:
-            continue
-
+    # make descriptors for all the valid names
+    for name in cls.VALID_NAMES:
         # god bless Python
-        def getter(self, x=key):
+        def getter(self, x=name):
             return self._values.get(x)
-        def setter(self, value, x=key):
+        def setter(self, value, x=name):
             self._set(x, value)
 
         prop = property(getter, setter)
         setattr(cls, name, prop)
 
-    cls.PURE_FLAGS = cls.VALID_NAMES - aliases
     return cls
 
 @augment_from_permissions
@@ -454,19 +544,20 @@ class PermissionOverwrite:
     The values supported by this are the same as :class:`Permissions`
     with the added possibility of it being set to ``None``.
 
-    .. container:: operations
+    Supported operations:
 
-        .. describe:: x == y
-
-            Checks if two overwrites are equal.
-        .. describe:: x != y
-
-            Checks if two overwrites are not equal.
-        .. describe:: iter(x)
-
-           Returns an iterator of ``(perm, value)`` pairs. This allows it
-           to be, for example, constructed as a dict or a list of pairs.
-           Note that aliases are not shown.
+    +-----------+------------------------------------------+
+    | Operation |               Description                |
+    +===========+==========================================+
+    | x == y    | Checks if two overwrites are equal.      |
+    +-----------+------------------------------------------+
+    | x != y    | Checks if two overwrites are not equal.  |
+    +-----------+------------------------------------------+
+    | iter(x)   | Returns an iterator of (perm, value)     |
+    |           | pairs. This allows this class to be used |
+    |           | as an iterable in e.g. set/list/dict     |
+    |           | constructions.                           |
+    +-----------+------------------------------------------+
 
     Parameters
     -----------
@@ -486,7 +577,7 @@ class PermissionOverwrite:
             setattr(self, key, value)
 
     def __eq__(self, other):
-        return isinstance(other, PermissionOverwrite) and self._values == other._values
+        return self._values == other._values
 
     def _set(self, key, value):
         if value not in (True, None, False):
@@ -552,5 +643,5 @@ class PermissionOverwrite:
             setattr(self, key, value)
 
     def __iter__(self):
-        for key in self.PURE_FLAGS:
+        for key in self.VALID_NAMES:
             yield key, self._values.get(key)

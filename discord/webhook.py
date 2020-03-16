@@ -3,7 +3,7 @@
 """
 The MIT License (MIT)
 
-Copyright (c) 2015-2020 Rapptz
+Copyright (c) 2015-2019 Rapptz
 
 Permission is hereby granted, free of charge, to any person obtaining a
 copy of this software and associated documentation files (the "Software"),
@@ -127,7 +127,7 @@ class WebhookAdapter:
             multipart = {
                 'payload_json': utils.to_json(payload)
             }
-            for i, file in enumerate(files):
+            for i, file in enumerate(files, start=1):
                 multipart['file%i' % i] = (file.filename, file.fp, 'application/octet-stream')
             data = None
 
@@ -194,8 +194,7 @@ class AsyncWebhookAdapter(WebhookAdapter):
                 file.reset(seek=tries)
 
             async with self.session.request(verb, url, headers=headers, data=data) as r:
-                # Coerce empty strings to return None for hygiene purposes
-                response = (await r.text(encoding='utf-8')) or None
+                response = await r.text(encoding='utf-8')
                 if r.headers['Content-Type'] == 'application/json':
                     response = json.loads(response)
 
@@ -276,8 +275,7 @@ class RequestsWebhookAdapter(WebhookAdapter):
 
             r = self.session.request(verb, url, headers=headers, data=data, files=multipart)
             r.encoding = 'utf-8'
-            # Coerce empty responses to return None for hygiene purposes
-            response = r.text or None
+            response = r.text
 
             # compatibility with aiohttp
             r.status = r.status_code
@@ -406,9 +404,6 @@ class Webhook:
         The webhook's ID
     type: :class:`WebhookType`
         The type of the webhook.
-
-        .. versionadded:: 1.3
-
     token: Optional[:class:`str`]
         The authentication token of the webhook. If this is ``None``
         then the webhook cannot be used to make requests.
@@ -425,7 +420,7 @@ class Webhook:
         The default avatar of the webhook.
     """
 
-    __slots__ = ('id', 'type', 'guild_id', 'channel_id', 'user', 'name',
+    __slots__ = ('id', 'type', 'guild_id', 'channel_id', 'user', 'name', 
                  'avatar', 'token', '_state', '_adapter')
 
     def __init__(self, data, *, adapter, state=None):
