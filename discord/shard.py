@@ -3,7 +3,7 @@
 """
 The MIT License (MIT)
 
-Copyright (c) 2015-2019 Rapptz
+Copyright (c) 2015-2020 Rapptz
 
 Permission is hereby granted, free of charge, to any person obtaining a
 copy of this software and associated documentation files (the "Software"),
@@ -251,6 +251,7 @@ class AutoShardedClient(Client):
         self._connection.shard_count = self.shard_count
 
         shard_ids = self.shard_ids if self.shard_ids else range(self.shard_count)
+        self._connection.shard_ids = shard_ids
 
         for shard_id in shard_ids:
             await self.launch_shard(gateway, shard_id)
@@ -300,10 +301,6 @@ class AutoShardedClient(Client):
 
         Changes the client's presence.
 
-        The activity parameter is a :class:`Activity` object (not a string) that represents
-        the activity being done currently. This could also be the slimmed down versions,
-        :class:`Game` and :class:`Streaming`.
-
         Example: ::
 
             game = discord.Game("with the API")
@@ -311,7 +308,7 @@ class AutoShardedClient(Client):
 
         Parameters
         ----------
-        activity: Optional[Union[:class:`Game`, :class:`Streaming`, :class:`Activity`]]
+        activity: Optional[:class:`BaseActivity`]
             The activity being done. ``None`` if no currently active activity is done.
         status: Optional[:class:`Status`]
             Indicates what status to change to. If ``None``, then

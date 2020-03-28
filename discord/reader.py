@@ -195,8 +195,8 @@ class AudioReader(threading.Thread):
         self.after = after
 
         self.box = nacl.secret.SecretBox(bytes(client.secret_key))
-        self.decrypt_rtp = getattr(self, '_decrypt_rtp_' + client._mode)
-        self.decrypt_rtcp = getattr(self, '_decrypt_rtcp_' + client._mode)
+        self.decrypt_rtp = getattr(self, '_decrypt_rtp_' + client.mode)
+        self.decrypt_rtcp = getattr(self, '_decrypt_rtcp_' + client.mode)
 
         self._current_error = None
         self._end = threading.Event()
@@ -288,6 +288,7 @@ class AudioReader(threading.Thread):
         return self.client.guild.get_member(user_id)
 
     def _write_to_sink(self, pcm, opus, packet):
+        print('i am writing to the sink')
         try:
             data = opus if self.sink.wants_opus() else pcm
             user = self._get_user(packet)
@@ -339,7 +340,7 @@ class AudioReader(threading.Thread):
                     continue
                 else:
                     raise
-
+            
             try:
                 packet = None
                 if not rtp.is_rtcp(raw_data):
@@ -366,7 +367,6 @@ class AudioReader(threading.Thread):
             else:
                 if packet.ssrc not in self.client._ssrcs:
                     log.debug("Received packet for unknown ssrc %s", packet.ssrc)
-
                 self.decoder.feed_rtp(packet)
 
     def stop(self):

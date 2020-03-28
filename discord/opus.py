@@ -854,7 +854,7 @@ class BufferedDecoder(threading.Thread):
 
     def _get_decoder(self, ssrc):
         dec = self.decoders.get(ssrc)
-
+        print(self.reader.client._get_ssrc_mapping(ssrc=ssrc)[1])
         if not dec and self.reader.client._get_ssrc_mapping(ssrc=ssrc)[1]: # and get_user(ssrc)?
             dec = self.decoders[ssrc] = self.decodercls(ssrc)
             dec.start_time = time.perf_counter() # :thinking:

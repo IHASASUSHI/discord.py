@@ -3,7 +3,7 @@
 """
 The MIT License (MIT)
 
-Copyright (c) 2015-2019 Rapptz
+Copyright (c) 2015-2020 Rapptz
 
 Permission is hereby granted, free of charge, to any person obtaining a
 copy of this software and associated documentation files (the "Software"),
@@ -38,8 +38,8 @@ import zlib
 import websockets
 
 from . import utils
-from .activity import _ActivityTag
-from .speakingstate import SpeakingState
+from .activity import BaseActivity
+from .enums import SpeakingState
 from .errors import ConnectionClosed, InvalidArgument
 
 log = logging.getLogger(__name__)
@@ -257,9 +257,6 @@ class DiscordWebSocket(websockets.client.WebSocketClientProtocol):
         else:
             return ws
 
-    def _dispatch(self, *args):
-        self._connection._state.dispatch(*args)
-
     def wait_for(self, event, predicate, result=None):
         """Waits for a DISPATCH'd event that meets the predicate.
 
@@ -399,6 +396,7 @@ class DiscordWebSocket(websockets.client.WebSocketClientProtocol):
                 self.sequence = None
                 self.session_id = None
                 log.info('Shard ID %s session has been invalidated.', self.shard_id)
+                await asyncio.sleep(5.0)
                 await self.identify()
                 return
 
@@ -521,8 +519,8 @@ class DiscordWebSocket(websockets.client.WebSocketClientProtocol):
 
     async def change_presence(self, *, activity=None, status=None, afk=False, since=0.0):
         if activity is not None:
-            if not isinstance(activity, _ActivityTag):
-                raise InvalidArgument('activity must be one of Game, Streaming, or Activity.')
+            if not isinstance(activity, BaseActivity):
+                raise InvalidArgument('activity must derive from BaseActivity.')
             activity = activity.to_dict()
 
         if status == 'idle':
@@ -705,7 +703,7 @@ class DiscordVoiceWebSocket(websockets.client.WebSocketClientProtocol):
 
         await self.send_as_json(payload)
 
-    async def speak(self, state=SpeakingState.active()):
+    async def speak(self, state=SpeakingState.voice):
         payload = {
             'op': self.SPEAKING,
             'd': {
@@ -729,7 +727,7 @@ class DiscordVoiceWebSocket(websockets.client.WebSocketClientProtocol):
             log.info('Voice RESUME failed.')
             await self.identify()
         elif op == self.SESSION_DESCRIPTION:
-            self._connection._mode = data['mode']
+            self._connection.mode = data['mode']
             await self.load_secret_key(data)
             await self._do_hacks()
         elif op == self.HELLO:

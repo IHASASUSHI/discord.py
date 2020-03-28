@@ -3,7 +3,7 @@
 """
 The MIT License (MIT)
 
-Copyright (c) 2015-2019 Rapptz
+Copyright (c) 2015-2020 Rapptz
 
 Permission is hereby granted, free of charge, to any person obtaining a
 copy of this software and associated documentation files (the "Software"),
@@ -28,23 +28,23 @@ import array
 import asyncio
 import collections.abc
 import unicodedata
-import datetime
-import functools
-import json
-import re
-import warnings
-
 from base64 import b64encode
 from bisect import bisect_left
+import datetime
 from email.utils import parsedate_to_datetime
+import functools
 from inspect import isawaitable as _isawaitable
 from collections import defaultdict
 from operator import attrgetter
+import json
+import re
+import warnings
 
 from .errors import InvalidArgument
 from .object import Object
 
 DISCORD_EPOCH = 1420070400000
+MAX_ASYNCIO_SECONDS = 3456000
 
 class cached_property:
     def __init__(self, function):
@@ -269,7 +269,7 @@ def find(predicate, seq):
     """A helper to return the first element found in the sequence
     that meets the predicate. For example: ::
 
-        member = find(lambda m: m.name == 'Mighty', channel.guild.members)
+        member = discord.utils.find(lambda m: m.name == 'Mighty', channel.guild.members)
 
     would find the first :class:`~discord.Member` whose name is 'Mighty' and return it.
     If an entry is not found, then ``None`` is returned.
@@ -426,6 +426,31 @@ async def sane_wait_for(futures, *, timeout):
         raise asyncio.TimeoutError()
 
     return done
+
+async def sleep_until(when, result=None):
+    """|coro|
+
+    Sleep until a specified time.
+
+    If the time supplied is in the past this function will yield instantly.
+
+    .. versionadded:: 1.3
+
+    Parameters
+    -----------
+    when: :class:`datetime.datetime`
+        The timestamp in which to sleep until.
+    result: Any
+        If provided is returned to the caller when the coroutine completes.
+    """
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=datetime.timezone.utc)
+    now = datetime.datetime.now(datetime.timezone.utc)
+    delta = (when - now).total_seconds()
+    while delta > MAX_ASYNCIO_SECONDS:
+        await asyncio.sleep(MAX_ASYNCIO_SECONDS)
+        delta -= MAX_ASYNCIO_SECONDS
+    return await asyncio.sleep(max(delta, 0), result)
 
 def valid_icon_size(size):
     """Icons must be power of 2 within [16, 4096]."""

@@ -3,7 +3,7 @@
 """
 The MIT License (MIT)
 
-Copyright (c) 2015-2019 Rapptz
+Copyright (c) 2015-2020 Rapptz
 
 Permission is hereby granted, free of charge, to any person obtaining a
 copy of this software and associated documentation files (the "Software"),
@@ -32,6 +32,7 @@ __all__ = (
     'ChannelType',
     'MessageType',
     'VoiceRegion',
+    'SpeakingState',
     'VerificationLevel',
     'ContentFilter',
     'Status',
@@ -192,6 +193,7 @@ class VoiceRegion(Enum):
     southafrica   = 'southafrica'
     india         = 'india'
     europe        = 'europe'
+    dubai         = 'dubai'
     vip_us_east   = 'vip-us-east'
     vip_us_west   = 'vip-us-west'
     vip_amsterdam = 'vip-amsterdam'
@@ -357,7 +359,7 @@ class AuditLogAction(Enum):
             AuditLogAction.message_pin:         None,
             AuditLogAction.message_unpin:       None,
             AuditLogAction.integration_create:  AuditLogActionCategory.create,
-            AuditLogAction.integration_update:  AuditLogActionCategoty.update,
+            AuditLogAction.integration_update:  AuditLogActionCategory.update,
             AuditLogAction.integration_delete:  AuditLogActionCategory.delete,
         }
         return lookup[self]
@@ -395,6 +397,8 @@ class UserFlags(Enum):
     hypesquad_brilliance = 128
     hypesquad_balance = 256
     early_supporter = 512
+    team_user = 1024
+    system = 4096
 
 class ActivityType(Enum):
     unknown = -1
@@ -402,6 +406,7 @@ class ActivityType(Enum):
     streaming = 1
     listening = 2
     watching = 3
+    custom = 4
 
     def __int__(self):
         return self.value
