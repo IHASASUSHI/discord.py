@@ -552,15 +552,15 @@ This command can be invoked any of the following ways:
     unintended parsing ambiguities in your code. One technique would be to clamp down the expected syntaxes
     allowed through custom converters or reordering the parameters to minimise clashes.
 
-    To help aid with some parsing ambiguities, :class:`str`, ``None`` and :data:`~ext.commands.Greedy` are
-    forbidden as parameters for the :data:`~ext.commands.Greedy` converter.
+    To help aid with some parsing ambiguities, :class:`str`, ``None``, :data:`typing.Optional` and
+    :data:`~ext.commands.Greedy` are forbidden as parameters for the :data:`~ext.commands.Greedy` converter.
 
 .. _ext_commands_error_handler:
 
 Error Handling
 ----------------
 
-When our commands fail to either parse we will, by default, receive a noisy error in ``stderr`` of our console that tells us
+When our commands fail to parse we will, by default, receive a noisy error in ``stderr`` of our console that tells us
 that an error has happened and has been silently ignored.
 
 In order to handle our errors, we must use something called an error handler. There is a global error handler, called

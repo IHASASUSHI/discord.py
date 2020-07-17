@@ -3,7 +3,7 @@
 """
 The MIT License (MIT)
 
-Copyright (c) 2015-2019 Rapptz
+Copyright (c) 2015-2020 Rapptz
 
 Permission is hereby granted, free of charge, to any person obtaining a
 copy of this software and associated documentation files (the "Software"),
@@ -59,7 +59,6 @@ try:
     has_nacl = True
 except ImportError:
     has_nacl = False
-
 
 log = logging.getLogger(__name__)
 
@@ -119,6 +118,7 @@ class VoiceClient:
         self._reader = None
         self.encoder = None
         self._ssrcs = Bidict()
+        self._lite_nonce = 0
 
     warn_nacl = not has_nacl
     supported_modes = (
@@ -158,7 +158,7 @@ class VoiceClient:
         await ws.voice_state(guild_id, channel_id)
 
         try:
-            await asyncio.wait_for(self._handshake_complete.wait(), timeout=self.timeout, loop=self.loop)
+            await asyncio.wait_for(self._handshake_complete.wait(), timeout=self.timeout)
         except asyncio.TimeoutError:
             await self.terminate_handshake(remove=True)
             raise
@@ -169,6 +169,7 @@ class VoiceClient:
         guild_id, channel_id = self.channel._get_voice_state_pair()
         self._handshake_complete.clear()
         await self.main_ws.voice_state(guild_id, None, self_mute=True)
+        self._handshaking = False
 
         log.info('The voice handshake is being terminated for Channel ID %s (Guild ID %s)', channel_id, guild_id)
         if remove:
@@ -209,10 +210,32 @@ class VoiceClient:
         if self._handshake_complete.is_set():
             # terminate the websocket and handle the reconnect loop if necessary.
             self._handshake_complete.clear()
+            self._handshaking = False
             await self.ws.close(4000)
             return
 
         self._handshake_complete.set()
+
+    @property
+    def latency(self):
+        """:class:`float`: Latency between a HEARTBEAT and a HEARTBEAT_ACK in seconds.
+
+        This could be referred to as the Discord Voice WebSocket latency and is
+        an analogue of user's voice latencies as seen in the Discord client.
+        
+        .. versionadded:: 1.4
+        """
+        ws = self.ws
+        return float("inf") if not ws else ws.latency
+
+    @property
+    def average_latency(self):
+        """:class:`float`: Average of most recent 20 HEARTBEAT latencies in seconds.
+        
+        .. versionadded:: 1.4
+        """
+        ws = self.ws
+        return float("inf") if not ws else ws.average_latency
 
     async def connect(self, *, reconnect=True, _tries=0, do_handshake=True):
         log.info('Connecting to voice...')
@@ -234,7 +257,7 @@ class VoiceClient:
         except (ConnectionClosed, asyncio.TimeoutError):
             if reconnect and _tries < 5:
                 log.exception('Failed to connect to voice... Retrying...')
-                await asyncio.sleep(1 + _tries * 2.0, loop=self.loop)
+                await asyncio.sleep(1 + _tries * 2.0)
                 await self.terminate_handshake()
                 await self.connect(reconnect=reconnect, _tries=_tries + 1)
             else:
@@ -266,7 +289,7 @@ class VoiceClient:
                 retry = backoff.delay()
                 log.exception('Disconnected from voice... Reconnecting in %.2fs.', retry)
                 self._connected.clear()
-                await asyncio.sleep(retry, loop=self.loop)
+                await asyncio.sleep(retry)
                 await self.terminate_handshake()
                 try:
                     await self.connect(reconnect=True)
@@ -443,7 +466,8 @@ class VoiceClient:
         or an error occurred.
 
         If an error happens while the audio player is running, the exception is
-        caught and the audio player is then stopped.
+        caught and the audio player is then stopped.  If no after callback is
+        passed, any caught exception will be displayed as if it were raised.
 
         Parameters
         -----------
@@ -451,9 +475,8 @@ class VoiceClient:
             The audio source we're reading from.
         after: Callable[[:class:`Exception`], Any]
             The finalizer that is called after the stream is exhausted.
-            All exceptions it throws are silently discarded. This function
-            must have a single parameter, ``error``, that denotes an
-            optional exception that was raised during playing.
+            This function must have a single parameter, ``error``, that
+            denotes an optional exception that was raised during playing.
 
         Raises
         -------

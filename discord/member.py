@@ -3,7 +3,7 @@
 """
 The MIT License (MIT)
 
-Copyright (c) 2015-2019 Rapptz
+Copyright (c) 2015-2020 Rapptz
 
 Permission is hereby granted, free of charge, to any person obtaining a
 copy of this software and associated documentation files (the "Software"),
@@ -33,7 +33,7 @@ from . import utils
 from .user import BaseUser, User
 from .activity import create_activity
 from .permissions import Permissions
-from .enums import Status, try_enum
+from .enums import Status, try_enum, UserFlags, HypeSquadHouse
 from .colour import Colour
 from .object import Object
 
@@ -50,17 +50,22 @@ class VoiceState:
         Indicates if the user is currently muted by their own accord.
     self_deaf: :class:`bool`
         Indicates if the user is currently deafened by their own accord.
+    self_stream: :class:`bool`
+        Indicates if the user is currently streaming via 'Go Live' feature.
+
+        .. versionadded:: 1.3
+
     self_video: :class:`bool`
         Indicates if the user is currently broadcasting video.
     afk: :class:`bool`
         Indicates if the user is currently in the AFK channel in the guild.
-    channel: :class:`VoiceChannel`
-        The voice channel that the user is currently connected to. None if the user
+    channel: Optional[:class:`VoiceChannel`]
+        The voice channel that the user is currently connected to. ``None`` if the user
         is not currently in a voice channel.
     """
 
     __slots__ = ('session_id', 'deaf', 'mute', 'self_mute',
-                 'self_video', 'self_deaf', 'afk', 'channel')
+                 'self_stream', 'self_video', 'self_deaf', 'afk', 'channel')
 
     def __init__(self, *, data, channel=None):
         self.session_id = data.get('session_id')
@@ -69,6 +74,7 @@ class VoiceState:
     def _update(self, data, channel):
         self.self_mute = data.get('self_mute', False)
         self.self_deaf = data.get('self_deaf', False)
+        self.self_stream = data.get('self_stream', False)
         self.self_video = data.get('self_video', False)
         self.afk = data.get('suppress', False)
         self.mute = data.get('mute', False)
@@ -76,7 +82,7 @@ class VoiceState:
         self.channel = channel
 
     def __repr__(self):
-        return '<VoiceState self_mute={0.self_mute} self_deaf={0.self_deaf} self_video={0.self_video} channel={0.channel!r}>'.format(self)
+        return '<VoiceState self_mute={0.self_mute} self_deaf={0.self_deaf} self_stream={0.self_stream} channel={0.channel!r}>'.format(self)
 
 def flatten_user(cls):
     for attr, value in itertools.chain(BaseUser.__dict__.items(), User.__dict__.items()):
@@ -144,7 +150,7 @@ class Member(discord.abc.Messageable, _BaseUser):
     joined_at: Optional[:class:`datetime.datetime`]
         A datetime object that specifies the date and time in UTC that the member joined the guild for
         the first time. In certain cases, this can be ``None``.
-    activities: Tuple[Union[:class:`Game`, :class:`Streaming`, :class:`Spotify`, :class:`Activity`]]
+    activities: Tuple[Union[:class:`BaseActivity`, :class:`Spotify`]]
         The activities that the user is currently doing.
     guild: :class:`Guild`
         The guild that the member belongs to.
@@ -155,7 +161,8 @@ class Member(discord.abc.Messageable, _BaseUser):
         Nitro boost on the guild, if available. This could be ``None``.
     """
 
-    __slots__ = ('_roles', 'joined_at', 'premium_since', '_client_status', 'activities', 'guild', 'nick', '_user', '_state')
+    __slots__ = ('_roles', 'joined_at', 'premium_since', '_client_status',
+                 'activities', 'guild', 'nick', '_user', '_state')
 
     def __init__(self, *, data, guild, state):
         self._state = state
@@ -305,7 +312,7 @@ class Member(discord.abc.Messageable, _BaseUser):
         for the member. If the default colour is the one rendered then an instance
         of :meth:`Colour.default` is returned.
 
-        There is an alias for this named :meth:`color`.
+        There is an alias for this named :attr:`color`.
         """
 
         roles = self.roles[1:] # remove @everyone
@@ -324,7 +331,7 @@ class Member(discord.abc.Messageable, _BaseUser):
         the member. If the default color is the one rendered then an instance of :meth:`Colour.default`
         is returned.
 
-        There is an alias for this named :meth:`colour`.
+        There is an alias for this named :attr:`colour`.
         """
         return self.colour
 
@@ -365,8 +372,8 @@ class Member(discord.abc.Messageable, _BaseUser):
 
     @property
     def activity(self):
-        """Union[:class:`Game`, :class:`Streaming`, :class:`Spotify`, :class:`Activity`]: Returns the primary
-        activity the user is currently doing. Could be None if no activity is being done.
+        """Union[:class:`BaseActivity`, :class:`Spotify`]: Returns the primary
+        activity the user is currently doing. Could be ``None`` if no activity is being done.
 
         .. note::
 
@@ -383,12 +390,14 @@ class Member(discord.abc.Messageable, _BaseUser):
         message: :class:`Message`
             The message to check if you're mentioned in.
         """
+        if message.guild is None or message.guild.id != self.guild.id:
+            return False
+
         if self._user.mentioned_in(message):
             return True
 
         for role in message.role_mentions:
-            has_role = utils.get(self.roles, id=role.id) is not None
-            if has_role:
+            if self._roles.has(role.id):
                 return True
 
         return False
@@ -404,8 +413,13 @@ class Member(discord.abc.Messageable, _BaseUser):
 
         Parameters
         -----------
-        channel: :class:`Channel`
+        channel: :class:`abc.GuildChannel`
             The channel to check your permissions for.
+
+        Returns
+        -------
+        :class:`Permissions`
+            The resolved permissions for the member.
         """
         return channel.permissions_for(self)
 
@@ -416,11 +430,15 @@ class Member(discord.abc.Messageable, _BaseUser):
         This is useful for figuring where a member stands in the role
         hierarchy chain.
         """
-        return self.roles[-1]
+        guild = self.guild
+        if len(self._roles) == 0:
+            return guild.default_role
+        
+        return max(guild.get_role(rid) or guild.default_role for rid in self._roles)
 
     @property
     def guild_permissions(self):
-        """Returns the member's guild permissions.
+        """:class:`Permissions`: Returns the member's guild permissions.
 
         This only takes into consideration the guild permissions
         and not most of the implied permissions or any of the
@@ -493,7 +511,7 @@ class Member(discord.abc.Messageable, _BaseUser):
 
         All parameters are optional.
 
-        .. versionchanged:: 1.1.0
+        .. versionchanged:: 1.1
             Can now pass ``None`` to ``voice_channel`` to kick a member from voice.
 
         Parameters
@@ -571,7 +589,7 @@ class Member(discord.abc.Messageable, _BaseUser):
 
         This raises the same exceptions as :meth:`edit`.
 
-        .. versionchanged:: 1.1.0
+        .. versionchanged:: 1.1
             Can now pass ``None`` to kick a member from voice.
 
         Parameters
