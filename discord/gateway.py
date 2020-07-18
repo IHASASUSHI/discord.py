@@ -735,7 +735,7 @@ class DiscordVoiceWebSocket(websockets.client.WebSocketClientProtocol):
 
         await self.send_as_json(payload)
 
-    async def speak(self, state=SpeakingState.active()):
+    async def speak(self, state=SpeakingState.voice):
         payload = {
             'op': self.SPEAKING,
             'd': {
